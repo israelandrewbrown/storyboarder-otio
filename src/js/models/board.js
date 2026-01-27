@@ -70,11 +70,18 @@ const boardDuration = (scene, board) =>
     ? Number(board.duration)
     : Number(scene.defaultBoardTiming)
 
-const boardDurationWithAudio = (scene, board) =>
-  Math.max(
-    board.audio && board.audio.duration ? board.audio.duration : 0,
+const boardDurationWithAudio = (scene, board) => {
+  let maxAudioDuration = 0
+  if (Array.isArray(board.audio)) {
+    maxAudioDuration = board.audio.reduce((max, track) => {
+      return Math.max(max, track.duration || 0)
+    }, 0)
+  }
+  return Math.max(
+    maxAudioDuration,
     boardDuration(scene, board)
   )
+}
 
 const assignUid = board => {
   board.uid = util.uidGen(5)
@@ -117,7 +124,9 @@ const getMediaDescription = board => {
     thumbnail: boardFilenameForThumbnail(board),
     posterframe: boardFilenameForPosterFrame(board),
     link: board.link == null ? undefined : board.link,
-    audio: board.audio == null ? undefined : board.audio.filename,
+    audio: Array.isArray(board.audio) && board.audio.length > 0
+    ? board.audio.map(track => track.filename)
+    : undefined,
     layerThumbnails: (board.layers && Object.keys(board.layers).length)
       // return all the layer thumbnails
       ? Object.entries(board.layers).reduce((coll, [name, layer]) => {

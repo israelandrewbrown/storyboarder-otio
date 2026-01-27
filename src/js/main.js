@@ -11,6 +11,7 @@ const os = require('os')
 const log = require('./shared/storyboarder-electron-log')
 const fileSystem = require('fs')
 const EventEmitter = require('events')
+const { spawn } = require('child_process')
 
 const prefModule = require('./prefs')
 prefModule.init(path.join(app.getPath('userData'), 'pref.json'))
@@ -1447,6 +1448,31 @@ menuBus.on('exportAnimatedGif', (event, arg) => {
   mainWindow.webContents.send('exportAnimatedGif', arg)
 })
 
+ipcMain.on('batch-render:request-scenes', (event, { currentPath, boardFilename }) => {
+  const fs = require('fs')
+  const path = require('path')
+
+  // Find all .storyboarder files in the currentPath directory
+  // This assumes all scenes are in subdirectories of currentPath
+  let scenes = []
+  try {
+    const subdirs = fs.readdirSync(currentPath, { withFileTypes: true })
+      .filter(dirent => dirent.isDirectory())
+      .map(dirent => dirent.name)
+
+    for (const subdir of subdirs) {
+      const scenePath = path.join(currentPath, subdir, `${subdir}.storyboarder`)
+      if (fs.existsSync(scenePath)) {
+        scenes.push(scenePath)
+      }
+    }
+  } catch (error) {
+    log.error('Error reading scenes for batch render:', error)
+  }
+
+  // Send the list of scenes back to the batch render window
+  event.sender.send('batch-render:scenes-list', scenes)
+})
 menuBus.on('exportVideo', (event, arg) => {
   mainWindow.webContents.send('exportVideo', arg)
 })
@@ -1464,6 +1490,179 @@ menuBus.on('exportWeb', (event, arg) => {
 })
 menuBus.on('exportZIP', (event, arg) => {
   mainWindow.webContents.send('exportZIP', arg)
+})
+
+menuBus.on('batchRender', () => {
+  if (!mainWindow) return
+
+  let batchRenderWindow = new BrowserWindow({
+    width: 800,
+    height: 600,
+    minWidth: 600,
+    minHeight: 400,
+    backgroundColor: '#333333',
+    show: false,
+    center: true,
+    parent: mainWindow,
+    resizable: true,
+    frame: true,
+    modal: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
+  })
+  remoteMain.enable(batchRenderWindow.webContents)
+  const url = `file://${__dirname}/../batch-render-window.html?currentPath=${encodeURIComponent(currentPath)}&boardFilename=${encodeURIComponent(boardFilename)}`
+  batchRenderWindow.loadURL(url)
+  batchRenderWindow.once('ready-to-show', () => {
+    batchRenderWindow.show()
+  })
+})
+
+menuBus.on('exportOTIO', async () => {
+  if (!mainWindow) return
+
+  // 1. Get project data from renderer process
+  const projectData = await new Promise(resolve => {
+    ipcMain.once('exportOTIO:getProjectData-response', (event, data) => {
+      resolve(data)
+    })
+    mainWindow.webContents.send('exportOTIO:getProjectData-request')
+  })
+
+  if (!projectData) {
+    dialog.showErrorBox('Export Failed', 'Could not retrieve project data from the main window.')
+    return
+  }
+
+  // 2. Show save dialog
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export OpenTimelineIO (.otio)',
+    defaultPath: path.join(app.getPath('documents'), 'export.otio'),
+    filters: [
+      { name: 'OpenTimelineIO', extensions: ['otio'] }
+    ]
+  })
+
+  if (canceled || !filePath) return
+
+  // 3. Execute Python script to convert Storyboarder JSON to OTIO JSON
+  try {
+    const pythonPath = 'python3'
+    const scriptPath = path.join(__dirname, '..', '..', 'otio_converter.py')
+    const child = spawn(pythonPath, [scriptPath, 'export'])
+
+    let otioJson = ''
+    let errorOutput = ''
+
+    child.stdout.on('data', (data) => {
+      otioJson += data.toString()
+    })
+
+    child.stderr.on('data', (data) => {
+      errorOutput += data.toString()
+    })
+
+    child.stdin.write(JSON.stringify(projectData))
+    child.stdin.end()
+
+    await new Promise((resolve, reject) => {
+      child.on('close', (code) => {
+        if (code !== 0) {
+          reject(new Error(`Python script failed with code ${code}. Error: ${errorOutput}`))
+        } else {
+          resolve()
+        }
+      })
+      child.on('error', reject)
+    })
+
+    // 4. Write the resulting OTIO JSON to file
+    await fs.writeFile(filePath, otioJson)
+
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Export Successful',
+      message: `Successfully exported to ${filePath}`
+    })
+  } catch (error) {
+    log.error('OTIO Export Error:', error)
+    dialog.showErrorBox('Export Failed', `An error occurred during OTIO export: ${error.message}`)
+  }
+})
+
+menuBus.on('importOTIO', async () => {
+  if (!mainWindow) return
+
+  // 1. Show open dialog
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'Import OpenTimelineIO (.otio)',
+    filters: [
+      { name: 'OpenTimelineIO', extensions: ['otio'] }
+    ],
+    properties: ['openFile']
+  })
+
+  if (canceled || filePaths.length === 0) return
+
+  const otioFilePath = filePaths[0]
+
+  // 2. Read the OTIO file content
+  let otioJson
+  try {
+    otioJson = await fs.readFile(otioFilePath, 'utf-8')
+  } catch (error) {
+    log.error('OTIO Import Error: Could not read file', error)
+    dialog.showErrorBox('Import Failed', `Could not read file: ${error.message}`)
+    return
+  }
+
+  // 3. Execute Python script to convert OTIO JSON to Storyboarder JSON
+  try {
+    const pythonPath = 'python3'
+    const scriptPath = path.join(__dirname, '..', '..', 'otio_converter.py')
+    const child = spawn(pythonPath, [scriptPath, 'import'])
+
+    let storyboarderJson = ''
+    let errorOutput = ''
+
+    child.stdout.on('data', (data) => {
+      storyboarderJson += data.toString()
+    })
+
+    child.stderr.on('data', (data) => {
+      errorOutput += data.toString()
+    })
+
+    child.stdin.write(otioJson)
+    child.stdin.end()
+
+    await new Promise((resolve, reject) => {
+      child.on('close', (code) => {
+        if (code !== 0) {
+          reject(new Error(`Python script failed with code ${code}. Error: ${errorOutput}`))
+        } else {
+          resolve()
+        }
+      })
+      child.on('error', reject)
+    })
+
+    // 4. Send the resulting Storyboarder JSON to the renderer process to load
+    const storyboarderData = JSON.parse(storyboarderJson)
+    mainWindow.webContents.send('importOTIO:loadProject', storyboarderData)
+
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Import Successful',
+      message: `Successfully imported ${otioFilePath}. Please save your project.`
+    })
+
+  } catch (error) {
+    log.error('OTIO Import Error:', error)
+    dialog.showErrorBox('Import Failed', `An error occurred during OTIO import: ${error.message}`)
+  }
 })
 
 menuBus.on('exportCleanup', (event, arg) => {

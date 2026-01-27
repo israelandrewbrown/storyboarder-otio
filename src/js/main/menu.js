@@ -127,6 +127,12 @@ const createMenu = ({ store, send }) => {
         }
       },
       {
+        label: i18n.t('menu.file.batch-render'),
+        click (item, focusedWindow, event) {
+          send('batchRender')
+        }
+      },
+      {
         label: i18n.t('menu.file.export-to-web'),
         click (item, focusedWindow, event) {
           send('exportWeb')
@@ -136,6 +142,12 @@ const createMenu = ({ store, send }) => {
         label: i18n.t('menu.file.export-project-as-zip'),
         click (item, focusedWindow, event) {
           send('exportZIP')
+        }
+      },
+      {
+        label: i18n.t('menu.file.export-otio'),
+        click (item, focusedWindow, event) {
+          send('exportOTIO')
         }
       },
       {
@@ -172,6 +184,12 @@ const createMenu = ({ store, send }) => {
         accelerator: keystrokeFor("menu:file:import-worksheets"),
         click (item, focusedWindow, event) {
           send('importWorksheets')
+        }
+      },
+      {
+        label: i18n.t('menu.file.import-otio'),
+        click (item, focusedWindow, event) {
+          send('importOTIO')
         }
       },
       {

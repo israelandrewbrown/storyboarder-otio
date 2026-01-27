@@ -109,17 +109,24 @@ class AudioPlayback {
       Tone.Buffer.on('error', onError)
 
       for (let board of this.sceneData.boards) {
-        if (!board.audio) continue
+        if (!Array.isArray(board.audio)) continue
 
-        if (!this.players.has(board.audio.filename)) {
-          loadables.push(board.audio.filename)
+        for (let track of board.audio) {
+          if (track.filename) {
+            if (!this.players.has(track.filename)) {
+              loadables.push(track.filename)
+            }
+          }
         }
       }
 
       // remove any players for files no longer referenced in scene boards
       //
       // for every loaded audio file ...
-      let sceneAudioFilenames = this.sceneData.boards.map(b => b.audio).map(a => a && a.filename).filter(a => !!a)
+      let sceneAudioFilenames = this.sceneData.boards
+        .filter(b => Array.isArray(b.audio))
+        .flatMap(b => b.audio.map(t => t.filename))
+        .filter(f => !!f)
       for (let filename of Object.keys(this.players._players)) {
         // ... check to see if it's not referenced in the scene
         if (!sceneAudioFilenames.includes(filename)) {
@@ -167,69 +174,71 @@ class AudioPlayback {
     for (let i = 0; i < this.sceneData.boards.length; i++) {
       let board = this.sceneData.boards[i]
 
-      if (board.audio) {
-        let player = this.players.get(board.audio.filename)
+      if (Array.isArray(board.audio)) {
+        for (let track of board.audio) {
+          if (!track.filename) continue
 
-        if (!player.buffer.loaded) {
-          console.error('audio not yet loaded', board.audio.filename)
-          continue
-        }
+          let player = this.players.get(track.filename)
 
-        // console.log('found', board.audio.filename, 'with duration', player.buffer.duration, 'at', board.time)
+          if (!player || !player.buffer.loaded) {
+            console.error('audio not yet loaded', track.filename)
+            continue
+          }
 
-        // is this the currently playing board?
-        if (board === playingBoard) {
-          // console.log('\tplaying current board', board.audio.filename, this.players.get(board.audio.filename))
+          // console.log('found', track.filename, 'with duration', player.buffer.duration, 'at', board.time)
 
-          // let durationInSeconds = Math.max(0, player.buffer.duration - CUT_EARLY_IN_SECONDS)
+          // is this the currently playing board?
+          if (board === playingBoard) {
+            // console.log('\tplaying current board track', track.filename, this.players.get(track.filename))
 
-          player.fadeOut = FADE_OUT_IN_SECONDS
-          player.curve = 'exponential'
+            player.fadeOut = FADE_OUT_IN_SECONDS
+            player.curve = 'exponential'
 
-          // TODO
-          // If audio is already playing, .stop is called on the player by Tone. But,
-          // for some reason, this causes a warning:
-          // "Time is in the past. Scheduled time must be >= AudioContext.currentTime"
-          // Couldn't figure out how to prevent that. Seems to be harmless? :/
-          player.start(
-            // start now
-            Tone.Time(),
-            // no offset
-            0
-            // duration, cut early
-            // durationInSeconds
-          )
+            // TODO
+            // If audio is already playing, .stop is called on the player by Tone. But,
+            // for some reason, this causes a warning:
+            // "Time is in the past. Scheduled time must be >= AudioContext.currentTime"
+            // Couldn't figure out how to prevent that. Seems to be harmless? :/
+            player.start(
+              // start now
+              Tone.Time(),
+              // no offset
+              0
+              // duration, cut early
+              // durationInSeconds
+            )
 
-        // does this board end AFTER this current playing board starts?
-        } else if (
-          // it started before
-          board.time < playingBoard.time &&
-          // ... but it ends after
-          ((board.time + (player.buffer.duration * MSECS_IN_A_SECOND)) > playingBoard.time) &&
-          // ... and we're NOT in auditioning mode
-          //   (i.e.: we don't want to play overlapping audio from prior boards
-          //    when we're auditioning a single board)
-          !isAuditioning
-        ) {
-          // console.log('\tfound overlapping board, i')
-          if (board.audio) {
-            let offsetInMsecs = playingBoard.time - board.time
-            // console.log('\tplaying overlapping', board.audio.filename, 'at offset', offsetInMsecs)
-            let player = this.players.get(board.audio.filename)
-            if (player.state !== 'started') {
-              // let durationInSeconds = Math.max(0, (player.buffer.duration - (offsetInMsecs / MSECS_IN_A_SECOND) - CUT_EARLY_IN_SECONDS))
-              player.fadeOut = FADE_OUT_IN_SECONDS
-              player.curve = 'exponential'
-              player.start(
-                // start now
-                Tone.Time(),
+          // does this board end AFTER this current playing board starts?
+          } else if (
+            // it started before
+            board.time < playingBoard.time &&
+            // ... but it ends after
+            ((board.time + (player.buffer.duration * MSECS_IN_A_SECOND)) > playingBoard.time) &&
+            // ... and we're NOT in auditioning mode
+            //   (i.e.: we don't want to play overlapping audio from prior boards
+            //    when we're auditioning a single board)
+            !isAuditioning
+          ) {
+            // console.log('\tfound overlapping board, i')
+            if (track.filename) {
+              let offsetInMsecs = playingBoard.time - board.time
+              // console.log('\tplaying overlapping track', track.filename, 'at offset', offsetInMsecs)
+              let player = this.players.get(track.filename)
+              if (player.state !== 'started') {
+                // let durationInSeconds = Math.max(0, (player.buffer.duration - (offsetInMsecs / MSECS_IN_A_SECOND) - CUT_EARLY_IN_SECONDS))
+                player.fadeOut = FADE_OUT_IN_SECONDS
+                player.curve = 'exponential'
+                player.start(
+                  // start now
+                  Tone.Time(),
 
-                // offset by offsetInMsecs (converted to seconds)
-                offsetInMsecs / MSECS_IN_A_SECOND
+                  // offset by offsetInMsecs (converted to seconds)
+                  offsetInMsecs / MSECS_IN_A_SECOND
 
-                // duration, cut early
-                // durationInSeconds
-              )
+                  // duration, cut early
+                  // durationInSeconds
+                )
+              }
             }
           }
         }

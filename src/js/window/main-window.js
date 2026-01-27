@@ -1917,8 +1917,8 @@ const loadBoardUI = async () => {
 
       // update board’s audio object
       storeUndoStateForScene(true)
-      board.audio = board.audio || {}
-      board.audio.filename = newFilename
+      board.audio = board.audio || []
+      board.audio.push({ filename: newFilename })
       // update the audio playback buffers
       const { failed } = await audioPlayback.updateBuffers()
       failed.forEach(filename => notifications.notify({ message: `Could not load audio file ${filename}` }))
@@ -1984,7 +1984,7 @@ const loadBoardUI = async () => {
       if (shouldClear) {
         // remove board’s audio object
         storeUndoStateForScene(true)
-        delete board.audio
+        board.audio = [] // Clear all audio tracks
 
         // TODO could clear out unused buffers to save RAM
         // audioPlayback.resetBuffers()
@@ -2080,8 +2080,8 @@ const loadBoardUI = async () => {
 
       // update board’s audio object
       storeUndoStateForScene(true)
-      board.audio = board.audio || {}
-      board.audio.filename = newFilename
+      board.audio = board.audio || []
+      board.audio.push({ filename: newFilename })
       // update the audio playback buffers
       const { failed } = await audioPlayback.updateBuffers()
       failed.forEach(filename => notifications.notify({ message: `Could not load audio file ${filename}` }))
@@ -2390,13 +2390,21 @@ const loadImageFileAsDataURL = filepath => {
 const updateAudioDurations = () => {
   let shouldSave = false
   for (let board of boardData.boards) {
-    if (board.audio) {
-      if (!board.audio.duration) {
-        // log.info(`duration missing for ${board.uid}. adding.`)
-        shouldSave = true
+    if (Array.isArray(board.audio)) {
+      for (let track of board.audio) {
+        if (!track.duration) {
+          // log.info(`duration missing for ${board.uid}. adding.`)
+          shouldSave = true
+        }
+        const audioBuffer = audioPlayback.getAudioBufferByFilename(track.filename)
+        if (audioBuffer) {
+          track.duration = audioBuffer.duration * 1000
+        } else {
+          // Handle case where audio file could not be loaded
+          track.duration = 0
+        }
+        // log.info(`set audio duration to ${track.duration}`)
       }
-      board.audio.duration = audioPlayback.getAudioBufferByFilename(board.audio.filename).duration * 1000
-      // log.info(`set audio duration to ${board.audio.duration}`)
     }
   }
   if (shouldSave) {
@@ -4174,7 +4182,7 @@ let renderThumbnailDrawer = () => {
     }
     html.push('<div class="info">')
     html.push('<div class="number">' + board.shot + '</div>')
-    if (board.audio && board.audio.filename.length) {
+    if (Array.isArray(board.audio) && board.audio.length > 0) {
       html.push(`
         <div class="audio">
           <svg>
@@ -6924,6 +6932,24 @@ ipcRenderer.on('exportFcp', (event, args) => {
 ipcRenderer.on('exportImages', (event, args) => {
   exportImages()
   ipcRenderer.send('analyticsEvent', 'Board', 'exportImages')
+})
+
+ipcRenderer.on('exportOTIO:getProjectData-request', async (event) => {
+  // 1. Ensure current board image data is saved
+  await saveImageFile()
+  // 2. Send project data back to main process
+  event.sender.send('exportOTIO:getProjectData-response', boardData)
+})
+
+ipcRenderer.on('importOTIO:loadProject', async (event, newBoardData) => {
+  // 1. Update global boardData
+  boardData = newBoardData
+  // 2. Mark file as dirty
+  markBoardFileDirty()
+  // 3. Re-render the scene
+  await renderScene()
+  // 4. Go to the first board
+  gotoBoard(0)
 })
 
 ipcRenderer.on('exportCleanup', (event, args) => {
