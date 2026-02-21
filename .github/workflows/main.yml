@@ -11,7 +11,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest, macos-latest, ubuntu-latest]
 
     steps:
       - name: Checkout repository
@@ -35,9 +35,10 @@ jobs:
         continue-on-error: true
 
       - name: Build executable
-        run: npx electron-builder build --${{ matrix.os == 'windows-latest' && 'win' || 'mac' }} --x64
+        run: npx electron-builder build --${{ matrix.os == 'windows-latest' && 'win' || (matrix.os == 'macos-latest' && 'mac' || 'linux') }} --x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -46,5 +47,7 @@ jobs:
           path: |
             dist/*.exe
             dist/*.dmg
+            dist/*.AppImage
+            dist/*.deb
             dist/*.zip
           if-no-files-found: warn
