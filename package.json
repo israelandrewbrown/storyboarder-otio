@@ -53,7 +53,7 @@
   "build": {
     "asar": true,
     "appId": "com.wonderunit.storyboarder",
-    "buildDependenciesFromSource": false,
+    "buildDependenciesFromSource": true,
     "compression": "maximum",
     "files": [
       "!*.md",
@@ -68,6 +68,7 @@
       "!scripts"
     ],
     "mac": {
+      "sign": false,
       "icon": "build/icon.icns",
       "hardenedRuntime": true,
       "category": "public.app-category.graphics-design",
@@ -76,6 +77,7 @@
       "gatekeeperAssess": false
     },
     "win": {
+      "sign": false,
       "icon": "build/icon.ico",
       "timeStampServer": "http://timestamp.comodoca.com/authenticode",
       "certificateSubjectName": "Wonder Unit, Inc.",
@@ -104,6 +106,7 @@
       ]
     },
     "linux": {
+      "sign": false,
       "target": [
         "AppImage",
         "snap",
