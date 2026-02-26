@@ -1,0 +1,9 @@
+version: 2.1.0
+files:
+  - url: Storyboarder-Setup-2.1.0.exe
+    sha512: jO2c5hrgHwDPkltp5+7jvOoeiqaNSJvce8DNT30SGESvTlE3vJRKY1fNOzl1EWEwApSNFVUtKH3ESUpjSBPWhg==
+    size: 125323584
+    isAdminRightsRequired: true
+path: Storyboarder-Setup-2.1.0.exe
+sha512: jO2c5hrgHwDPkltp5+7jvOoeiqaNSJvce8DNT30SGESvTlE3vJRKY1fNOzl1EWEwApSNFVUtKH3ESUpjSBPWhg==
+releaseDate: '2020-09-03T19:43:22.967Z'
